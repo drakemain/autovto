@@ -1,0 +1,25 @@
+{
+  "name": "autovto",
+  "version": "1.0.0",
+  "description": "Automatically accept VTO from Amazon Hub.",
+  "main": "app.js",
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.2",
+    "eslint": "^4.19.1",
+    "mongoose": "^5.0.14"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drakemain/AutoVTO.git"
+  },
+  "author": "Drake Main",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/drakemain/AutoVTO/issues"
+  },
+  "homepage": "https://github.com/drakemain/AutoVTO#readme"
+}
