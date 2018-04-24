@@ -5,8 +5,7 @@
   "main": "app.js",
   "dependencies": {
     "cheerio": "^1.0.0-rc.2",
-    "eslint": "^4.19.1",
-    "mongoose": "^5.0.14"
+    "eslint": "^4.19.1"
   },
   "devDependencies": {},
   "scripts": {

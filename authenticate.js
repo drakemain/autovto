@@ -2,19 +2,16 @@ const https = require('https');
 const queryString = require('querystring');
 const cheerio = require('cheerio');
 const readline = require('readline');
+const path = require('path');
+const fs = require('fs');
 
 let RequestContextKey = '';
 let login = '';
 let obfuscatedPhoneNumber = '';
 let codeReceipt = '';
 let authenticationKey = '';
-let auth = {
-  'amzn-idp-auth-key': '',
-  'amzn-idp-auth-token': '',
-  'amzn-idp-td-key': '',
-  'amzn-idp-td-token': '',
-  'JSESSIONID': ''
-};
+let SAMLResponse = '';
+let cookies = {};
 
 let getRequest = (requestURL, shouldReturnBody = false) => {
   return new Promise((res, rej) => {
@@ -33,6 +30,7 @@ let getRequest = (requestURL, shouldReturnBody = false) => {
       }
 
       result.headers = response.headers;
+      setCookie(result.headers['set-cookie']);
       
       if (!shouldReturnBody) { res(result); return;}
       else { console.log('Fetching response body..'); }
@@ -54,7 +52,7 @@ let getRequest = (requestURL, shouldReturnBody = false) => {
   });
 };
 
-let postRequest = (options, urlEncodedData, shouldReturnBody) => {
+let postRequest = (options, urlEncodedData, shouldReturnBody = false) => {
   return new Promise((res, rej) => {
     let result = {
       responseBody: '',
@@ -65,20 +63,25 @@ let postRequest = (options, urlEncodedData, shouldReturnBody) => {
       console.log(`POST Request: ${options.hostname}${options.path}`);
       console.log(`Status: ${response.statusCode}`);
 
-      if (response.statusCode !== 302 && response.statusCode !== 200) {
-        rej(new Error('Bad response.'));
-      }
-
       result.headers = response.headers;
+      setCookie(result.headers['set-cookie']);
 
       if (!shouldReturnBody) { res(result); return;}
       else { console.log('Fetching response body..'); }
       
       response.on('data', chunk => {
         result.responseBody += chunk;
+        console.log(` --Chunk: ${chunk.length}`);
       });
 
       response.on('end', () => {
+        if (response.statusCode !== 302 && response.statusCode !== 200) {
+          fs.writeFile(path.join(__dirname, 'badResponse.html'), result.responseBody, err => {
+            if (err) { console.log(err); }
+          });
+          rej(new Error('Bad response.'));
+        }
+        
         res(result);
       });
 
@@ -91,6 +94,7 @@ let postRequest = (options, urlEncodedData, shouldReturnBody) => {
     postRequest.end();
   });
 };
+module.exports.postRequest = postRequest;
 
 let getSAMLRedirect = () => {
   const url = 'https://hub.amazon.work/login';
@@ -128,12 +132,26 @@ let inputUserName = () => {
   });
 };
 
-let submitUsername = (username) => {
+let getRegisteredUserData = (username) => {
+  return getRegisteredUsers().then(users => {
+    console.log('Registered data: ', users[username]);
+    if (users[username] && users[username]['amzn-idp-auth-key'] 
+    && users[username]['amzn-idp-auth-token']) {
+      cookies['amzn-idp-auth-key'] = users[username]['amzn-idp-auth-key'];
+      cookies['amzn-idp-auth-token'] = users[username]['amzn-idp-auth-token'];
+      return true;
+    } else {
+      return false;
+    }
+  });
+};
+
+let submitUsername = () => {
   console.log('\n');
   console.log(`Attempting to POST login id: ${login}.`);
 
   const data = queryString.stringify({
-    login: username,
+    login: login,
     RequestContextKey: RequestContextKey,
     AuthenticationStep: 'ENTER_USERNAME'
   });
@@ -242,18 +260,6 @@ let submitVerificationCode = (code) => {
   return postRequest(options, data, true).then(pwForm => {
     let $ = cheerio.load(pwForm.responseBody);
     authenticationKey = $('input[name="authenticationKey"]').attr().value;
-
-    const authValues = pwForm.headers['set-cookie'];
-
-    auth['amzn-idp-auth-key'] = authValues[3];
-    auth['amzn-idp-auth-token'] = authValues[4];
-    auth['amzn-idp-td-key'] = authValues[5];
-    auth['amzn-idp-td-token'] = authValues[6];
-
-    for (let key in auth) {
-      auth[key] = auth[key].split(';')[0].split('=')[1];
-      console.log(`Fetched authentication token: ${key}.`);
-    }
   });
 };
 
@@ -289,38 +295,140 @@ let submitPassword = (password) => {
     headers: {
       'Content-Length': data.length,
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': buildAuthCookieString()
+      'Cookie': buildCookieString(cookies)
     }
   };
 
-  return postRequest(options, data).then(pwSubmission => {
-    auth['JSESSIONID'] = pwSubmission.headers['set-cookie'][0].split(';')[0].split('=')[1];
-    console.log('Got JSESSIONID.');
+  return postRequest(options, data, true).then(pwSubmission => {
+    let $ = cheerio.load(pwSubmission.responseBody);
+    SAMLResponse = $('input[name="SAMLResponse"]').attr().value;
   });
 };
 
-let buildAuthCookieString = () => {
+let getEsspSession = () => {
+  console.log('\n');
+  const data = queryString.stringify({
+    SAMLResponse: SAMLResponse
+  });
+
+  let options = {
+    hostname: 'hub.amazon.work',
+    path: '/saml/acs',
+    method: 'POST',
+    headers: {
+      'Content-Length': data.length,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': buildCookieString(cookies)
+    }
+  };
+
+  return postRequest(options, data, false);
+};
+
+let buildCookieString = (authData) => {
   let authKeyString = '';
-  for (let key in auth) {
-    authKeyString += `${key}=${auth[key]}; `;
+  for (let key in authData) {
+    authKeyString += `${key}=${authData[key]}; `;
   }
 
   return authKeyString;
 };
-module.exports.buildAuthCookieString = buildAuthCookieString;
+module.exports.buildCookieString = buildCookieString;
 
-module.exports.getAuthKeys = getSAMLRedirect()
-  .then(getRequestContextKey)
-  .then(inputUserName)
-  .then(submitUsername)
-  .then(selectPhone)
-  .then(requestVerificationCode)
-  .then(inputVerificationCode)
-  .then(submitVerificationCode)
-  .then(inputPassword)
-  .then(submitPassword)
-  .then(() => {
-    console.log('\nAuthentication complete.\n');
-    return auth;
-  })
-  .catch(console.error);
+let setCookie = (cookieArr) => {
+  if (!cookieArr) { return; }
+
+  console.log('set-cookie:');
+  console.log(cookieArr);
+
+  for (let i = 0; i < cookieArr.length; ++i) {
+    let cookie = cookieArr[i].split(';')[0].split('=');
+    cookies[cookie[0]] = cookie[1];
+  }
+};
+
+let getRegisteredUsers = () => {
+  return new Promise((res, rej) => {
+    fs.readFile(path.join(__dirname, 'users.json'), (err, data) => {
+      if (err) { rej(err); return; }
+
+      res(JSON.parse(data));
+    });
+  }).catch(err => {
+    if (err.code === 'ENOENT') {
+      return {};
+    }
+  });
+};
+
+let addNewUser = (newUser) => {
+  if (!newUser) { return; }
+  
+  let idp = {
+    'amzn-idp-auth-key': newUser.cookies['amzn-idp-auth-key'],
+    'amzn-idp-auth-token': newUser.cookies['amzn-idp-auth-token']
+  };
+
+  getRegisteredUsers().then(users => {
+    users[newUser.login] = idp;
+    let stringifiedUsers = JSON.stringify(users);
+    return stringifiedUsers;
+  }).then(updatedUsersString => {
+    return new Promise((res, rej) => {
+      fs.writeFile(path.join(__dirname, 'users.json'), updatedUsersString, (err) => {
+        if (err) { rej(err); return; }
+        console.log(`Successfully saved user: ${newUser.login}`);
+        res();
+      });
+    });
+  });
+};
+
+let loginPrompt = () => {
+  return inputUserName()
+    .then(getRegisteredUserData)
+    .then(isRegistered => {
+      console.log(`Is registered: ${isRegistered}.`);
+      if (isRegistered) {
+        return submitUsername()
+          .then(inputPassword)
+          .then(submitPassword);
+      } else {
+        return submitUsername()
+          .then(selectPhone)
+          .then(requestVerificationCode)
+          .then(inputVerificationCode)
+          .then(submitVerificationCode)
+          .then(inputPassword)
+          .then(submitPassword);
+      }
+    });  
+};
+
+module.exports.getAuthKeys = () => {
+  return getSAMLRedirect()
+    .then(getRequestContextKey)
+
+    .then(inputUserName)
+    .then(submitUsername)
+    .then(selectPhone)
+    .then(requestVerificationCode)
+    .then(inputVerificationCode)
+    .then(submitVerificationCode)
+    .then(inputPassword)
+    .then(submitPassword)
+    
+    .then(getEsspSession)
+    // .then(() => {
+    //   let user = {};
+    //   user.login = login;
+    //   user.cookies = cookies;
+    //   // addNewUser(user);
+    // })
+    .then(() => {
+      console.log('\nAuthentication complete.\n');
+
+      return cookies;
+    })
+    .catch(console.error);
+};
