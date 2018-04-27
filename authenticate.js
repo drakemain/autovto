@@ -6,11 +6,14 @@ const path = require('path');
 const fs = require('fs');
 
 let RequestContextKey = '';
-let login = '';
+// let login = '';
+let login = 'drakmain';
+let pw = 'Neednewjob0123';
 let obfuscatedPhoneNumber = '';
 let codeReceipt = '';
 let authenticationKey = '';
 let SAMLResponse = '';
+let csrfToken = '';
 let cookies = {};
 
 let getRequest = (requestURL, shouldReturnBody = false) => {
@@ -23,7 +26,7 @@ let getRequest = (requestURL, shouldReturnBody = false) => {
     
     https.get(requestURL, response => {
       console.log(`GET Request: ${requestURL}`);
-      console.log(`Status: ${response.statusCode}`);
+      console.log(` Status: ${response.statusCode}`);
       
       if (response.statusCode !== 302 && response.statusCode !== 200) {
         rej(new Error('Bad response.'));
@@ -33,7 +36,7 @@ let getRequest = (requestURL, shouldReturnBody = false) => {
       setCookie(result.headers['set-cookie']);
       
       if (!shouldReturnBody) { res(result); return;}
-      else { console.log('Fetching response body..'); }
+      else { console.log(' Fetching response body..'); }
 
       response.on('data', chunk => {
         result.responseBody += chunk;
@@ -67,7 +70,7 @@ let postRequest = (options, urlEncodedData, shouldReturnBody = false) => {
       setCookie(result.headers['set-cookie']);
 
       if (!shouldReturnBody) { res(result); return;}
-      else { console.log('Fetching response body..'); }
+      else { console.log(' Fetching response body..'); }
       
       response.on('data', chunk => {
         result.responseBody += chunk;
@@ -82,6 +85,7 @@ let postRequest = (options, urlEncodedData, shouldReturnBody = false) => {
           rej(new Error('Bad response.'));
         }
         
+        console.log(' ----Complete.');
         res(result);
       });
 
@@ -94,12 +98,11 @@ let postRequest = (options, urlEncodedData, shouldReturnBody = false) => {
     postRequest.end();
   });
 };
-module.exports.postRequest = postRequest;
 
 let getSAMLRedirect = () => {
-  const url = 'https://hub.amazon.work/login';
+  console.log('Getting redirect.');
 
-  console.log(`GET request at ${url}.`);
+  const url = 'https://hub.amazon.work/login';
 
   return getRequest(url).then(response => {
     return response.headers.location;
@@ -112,7 +115,7 @@ let getRequestContextKey = (SAMLUrl) => {
     let $ = cheerio.load(response.responseBody);
     RequestContextKey = $('input[name="RequestContextKey"]').attr().value;
 
-    console.log(`Retrieved RequestContextKey: ${RequestContextKey}.`);
+    console.log('\x1b[32m', `Retrieved RequestContextKey: ${RequestContextKey}.`, '\x1b[0m');
   });
 };
 
@@ -133,14 +136,20 @@ let inputUserName = () => {
 };
 
 let getRegisteredUserData = (username) => {
+  console.log('\nChecking for saved tokens...');
   return getRegisteredUsers().then(users => {
-    console.log('Registered data: ', users[username]);
     if (users[username] && users[username]['amzn-idp-auth-key'] 
-    && users[username]['amzn-idp-auth-token']) {
+    && users[username]['amzn-idp-auth-token']
+    && users[username]['amzn-idp-td-key']
+    && users[username]['amzn-idp-td-token']) {
+      console.log('\x1b[32m', 'Found existing tokens.', '\x1b[0m');
       cookies['amzn-idp-auth-key'] = users[username]['amzn-idp-auth-key'];
       cookies['amzn-idp-auth-token'] = users[username]['amzn-idp-auth-token'];
+      cookies['amzn-idp-td-key'] = users[username]['amzn-idp-td-key'];
+      cookies['amzn-idp-td-token'] = users[username]['amzn-idp-td-token'];
       return true;
     } else {
+      console.log('\x1b[31m', 'No existing tokens.', '\x1b[0m');
       return false;
     }
   });
@@ -162,16 +171,19 @@ let submitUsername = () => {
     method: 'POST',
     headers: {
       'Content-Length': data.length,
-      'Content-Type': 'application/x-www-form-urlencoded'
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': buildCookieString(cookies)
     }
   };
 
-  return postRequest(options, data, true);
+  return postRequest(options, data, true).then(response => {
+    return response.responseBody;
+  });
 };
 
-let selectPhone = phoneSelectForm => {
+let selectPhone = phoneSelectFormHTML => {
   console.log('\n');
-  let $ = cheerio.load(phoneSelectForm.responseBody);
+  let $ = cheerio.load(phoneSelectFormHTML);
   let obfuscatedPhoneNumbers = $('#phoneNumberSelectionIndex').children('option').toArray();
 
   if (obfuscatedPhoneNumbers.length > 2) {
@@ -213,7 +225,7 @@ let requestVerificationCode = phoneNumberSelectionIndex => {
     console.log(`A verification code has been sent to ${obfuscatedPhoneNumber}.`);
     let $ = cheerio.load(codeInputForm.responseBody);
     codeReceipt = $('#dropDownForm').children('input[name="codeReceipt"]').attr().value;
-    console.log(`Code Receipt: ${codeReceipt}`);
+    console.log('\x1b[32m', `Code Receipt: ${codeReceipt}`, '\x1b[0m');
   });
 };
 
@@ -258,9 +270,18 @@ let submitVerificationCode = (code) => {
   };
 
   return postRequest(options, data, true).then(pwForm => {
-    let $ = cheerio.load(pwForm.responseBody);
-    authenticationKey = $('input[name="authenticationKey"]').attr().value;
+    return pwForm.responseBody;
   });
+};
+
+let setAuthenticationKey = (pwFormHTML) => {
+  fs.writeFile(path.join(__dirname, 'pwform.html'), pwFormHTML, err => {
+    if (err) {console.error(err);}
+  });
+  let $ = cheerio.load(pwFormHTML);
+  authenticationKey = $('input[name="authenticationKey"]').attr().value;
+
+  console.log('\x1b[32m', `authenticationKey: ${authenticationKey}`, '\x1b[0m');
 };
 
 let inputPassword = () => {
@@ -302,11 +323,13 @@ let submitPassword = (password) => {
   return postRequest(options, data, true).then(pwSubmission => {
     let $ = cheerio.load(pwSubmission.responseBody);
     SAMLResponse = $('input[name="SAMLResponse"]').attr().value;
+    console.log('\x1b[32m', 'Got SAMLResponse', '\x1b[0m');
   });
 };
 
 let getEsspSession = () => {
   console.log('\n');
+  console.log('Attempting to fetch _essp_session.');
   const data = queryString.stringify({
     SAMLResponse: SAMLResponse
   });
@@ -325,6 +348,47 @@ let getEsspSession = () => {
   return postRequest(options, data, false);
 };
 
+let getCSRFToken = () => {
+  console.log('\n');
+  
+  return new Promise((res, rej) => {
+    console.log('Attempting to fetch X-CSRF-Token.');
+
+    https.get({
+      hostname: 'hub.amazon.work',
+      path: '/employees/101146319/schedules',
+      headers: {
+        Cookie: buildCookieString(cookies)
+      }
+    }, (response) => {
+      let body = '';
+
+      setCookie(response.headers['set-cookie']);
+  
+      response.on('data', chunk => {
+        body += chunk;
+      });
+  
+      response.on('end', () => {
+        res(body);
+      });
+  
+      response.on('error', err => {
+        rej(err);
+      });
+
+    });
+  }).then(body => {
+    fs.writeFile(path.join(__dirname, 'csrf-token.html'), body, err => {
+      if (err) { console.log(err); }
+    });
+    
+    let $ = cheerio.load(body);
+    csrfToken = $('meta[name="csrf-token"]').attr().content;
+    console.log('\x1b[32m', 'TOKEN:', csrfToken, '\x1b[0m');
+  });
+};
+
 let buildCookieString = (authData) => {
   let authKeyString = '';
   for (let key in authData) {
@@ -333,17 +397,16 @@ let buildCookieString = (authData) => {
 
   return authKeyString;
 };
-module.exports.buildCookieString = buildCookieString;
 
 let setCookie = (cookieArr) => {
   if (!cookieArr) { return; }
 
-  console.log('set-cookie:');
-  console.log(cookieArr);
+  console.log(' set-cookie:');
 
   for (let i = 0; i < cookieArr.length; ++i) {
     let cookie = cookieArr[i].split(';')[0].split('=');
     cookies[cookie[0]] = cookie[1];
+    console.log (` --${cookie[0]}`);
   }
 };
 
@@ -366,10 +429,12 @@ let addNewUser = (newUser) => {
   
   let idp = {
     'amzn-idp-auth-key': newUser.cookies['amzn-idp-auth-key'],
-    'amzn-idp-auth-token': newUser.cookies['amzn-idp-auth-token']
+    'amzn-idp-auth-token': newUser.cookies['amzn-idp-auth-token'],
+    'amzn-idp-td-key': newUser.cookies['amzn-idp-td-key'],
+    'amzn-idp-td-token': newUser.cookies['amzn-idp-td-token']
   };
 
-  getRegisteredUsers().then(users => {
+  return getRegisteredUsers().then(users => {
     users[newUser.login] = idp;
     let stringifiedUsers = JSON.stringify(users);
     return stringifiedUsers;
@@ -385,50 +450,83 @@ let addNewUser = (newUser) => {
 };
 
 let loginPrompt = () => {
-  return inputUserName()
-    .then(getRegisteredUserData)
+  // return inputUserName()
+  //   .then(getRegisteredUserData)
+  //   .then(isRegistered => {
+  //     console.log(`Is registered: ${isRegistered}.`);
+  //     if (isRegistered) {
+  //       return submitUsername()
+  //         .then(setAuthenticationKey)
+  //         .then(inputPassword)
+  //         .then(submitPassword);
+  //     } else {
+  //       return submitUsername()
+  //         .then(selectPhone)
+  //         .then(requestVerificationCode)
+  //         .then(inputVerificationCode)
+  //         .then(submitVerificationCode)
+  //         .then(setAuthenticationKey)
+  //         .then(inputPassword)
+  //         .then(submitPassword);
+  //     }
+  //   });
+
+  return getRegisteredUserData(login)
     .then(isRegistered => {
       console.log(`Is registered: ${isRegistered}.`);
       if (isRegistered) {
         return submitUsername()
-          .then(inputPassword)
-          .then(submitPassword);
+          .then(setAuthenticationKey)
+          // .then(inputPassword)
+          .then(() => {
+            return submitPassword(pw);
+          });
       } else {
         return submitUsername()
           .then(selectPhone)
           .then(requestVerificationCode)
           .then(inputVerificationCode)
           .then(submitVerificationCode)
-          .then(inputPassword)
-          .then(submitPassword);
+          .then(setAuthenticationKey)
+          // .then(inputPassword)
+          .then(() => {
+            return submitPassword(pw);
+          });
       }
-    });  
+    });
 };
 
 module.exports.getAuthKeys = () => {
   return getSAMLRedirect()
     .then(getRequestContextKey)
 
-    .then(inputUserName)
-    .then(submitUsername)
-    .then(selectPhone)
-    .then(requestVerificationCode)
-    .then(inputVerificationCode)
-    .then(submitVerificationCode)
-    .then(inputPassword)
-    .then(submitPassword)
-    
+    // .then(inputUserName)
+    // .then(submitUsername)
+    // .then(selectPhone)
+    // .then(requestVerificationCode)
+    // .then(inputVerificationCode)
+    // .then(submitVerificationCode)
+    // .then(inputPassword)
+    // .then(submitPassword)
+    .then(loginPrompt)
+
     .then(getEsspSession)
-    // .then(() => {
-    //   let user = {};
-    //   user.login = login;
-    //   user.cookies = cookies;
-    //   // addNewUser(user);
-    // })
+    .then(getCSRFToken)
+    .then(() => {
+      let user = {};
+      user.login = login;
+      user.cookies = cookies;
+      return addNewUser(user);
+    })
     .then(() => {
       console.log('\nAuthentication complete.\n');
 
-      return cookies;
+      return {
+        cookies: cookies,
+        'X-CSRF-TOKEN': csrfToken
+      };
     })
     .catch(console.error);
 };
+
+module.exports.buildCookieString = buildCookieString;
