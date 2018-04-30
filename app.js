@@ -22,7 +22,7 @@ let stats = {
     return `Successfully Accepted: ${this.acceptedVto}`
     + ` | Missed Opportunities: ${this.missedVTO}` 
     + ` | Total Checks: ${this.checks}`
-    + ` | Total Reauthentication: ${this.authRefresh}`;
+    + ` | Total Authentication: ${this.authRefresh}`;
   }
 };
 
@@ -110,38 +110,66 @@ let findActiveVTO = (opportunities) => {
 
 let VTOWait = () => {
   return new Promise((res) => {
-    let loop = () => {
-      const interval = (15 + (Math.random() * 20)) * 1000;
-
-      console.log('\x1b[1m', stats.getStatsString(), '\x1b[0m');
-      console.log(`Waiting ${interval}ms until next check.\n`);
-
-      setTimeout(() => {
-        console.log(new Date().toLocaleTimeString());
+    (function loop() {
+      const interval = (5 + (Math.random() * 20)) * 1000;
+      console.log("\x1b[40m", new Date().toLocaleTimeString(), "\x1b[0m");
         
-        return getOpportunities()
-          .then(findActiveVTO)
-          .then(activeVTO => {
-            if (activeVTO) {
-              console.log('Found a VTO opportunity!');
-              res(activeVTO);
-            } else {
-              console.log('No VTO opportunities apply to you. =(\n');
-              loop();
-            }
-          }).catch(err => {
-            console.error(err);
-            console.log('Authentication expired. Attempting to reauthenticate.');
+      return getOpportunities()
+      .then(findActiveVTO)
+      .then(activeVTO => {
+        if (activeVTO) {
+          console.log('Found a VTO opportunity!');
+          res(activeVTO);
+        } else {
+          console.log('No VTO opportunities apply to you. =(\n');
+          setTimeout(loop, interval);
+        }
 
-            main();
-          });
+        console.log('\x1b[1m', stats.getStatsString(), '\x1b[0m');
+        console.log(`Waiting ${interval}ms until next check.\n`);
+      }).catch(err => {
+        console.error(err);
+        console.log('Authentication expired. Attempting to reauthenticate.');
 
-      }, interval);
-    };
-
-    loop();
+        main();
+      });
+    })();
   })
-    .then(claimOpportunity);
+  .then(claimOpportunity);
+
+
+  //   let loop = () => {
+  //     const interval = (5 + (Math.random() * 20)) * 1000;
+
+  //     console.log('\x1b[1m', stats.getStatsString(), '\x1b[0m');
+  //     console.log(`Waiting ${interval}ms until next check.\n`);
+
+  //     setTimeout(() => {
+  //       console.log(new Date().toLocaleTimeString());
+        
+  //       return getOpportunities()
+  //         .then(findActiveVTO)
+  //         .then(activeVTO => {
+  //           if (activeVTO) {
+  //             console.log('Found a VTO opportunity!');
+  //             res(activeVTO);
+  //           } else {
+  //             console.log('No VTO opportunities apply to you. =(\n');
+  //             loop();
+  //           }
+  //         }).catch(err => {
+  //           console.error(err);
+  //           console.log('Authentication expired. Attempting to reauthenticate.');
+
+  //           main();
+  //         });
+
+  //     }, interval);
+  //   };
+
+  //   loop();
+  // })
+  //   .then(claimOpportunity);
 };
 
 let claimOpportunity = (opportunity) => {
