@@ -10,7 +10,12 @@ let csrfToken;
 let cookieString;
 let cookies;
 const startTime = new Date();
+let timeToRun = 0;
 const employeeID = '101146319';
+const checkInterval = {
+  min: 10,
+  rand: 20
+};
 
 let stats = {
   acceptedVto: 0,
@@ -27,6 +32,10 @@ let stats = {
 };
 
 let main = () => {
+  checkInterval.min = Number(process.argv[2]) || checkInterval.min;
+  checkInterval.rand = Number(process.argv[3]) || checkInterval.rand;
+  timeToRun = Number(process.argv[4]) || timeToRun;
+
   getAuthKeys().then(authHeaders => {
     ++stats.authRefresh;
     cookies = authHeaders.cookies;
@@ -81,6 +90,8 @@ let getOpportunities = () => {
       response.on('error', err => {
         rej(err);
       });
+    }).on('error', err => {
+      rej(err);
     });
   });
 };
@@ -111,7 +122,7 @@ let findActiveVTO = (opportunities) => {
 let VTOWait = () => {
   return new Promise((res) => {
     (function loop() {
-      const interval = (5 + (Math.random() * 20)) * 1000;
+      const interval = (checkInterval.min + (Math.random() * checkInterval.rand)) * 1000;
       console.log("\x1b[40m", new Date().toLocaleTimeString(), "\x1b[0m");
         
       return getOpportunities()
@@ -122,7 +133,26 @@ let VTOWait = () => {
           res(activeVTO);
         } else {
           console.log('No VTO opportunities apply to you. =(\n');
-          setTimeout(loop, interval);
+          let shouldLoop = true;
+
+          if (timeToRun !== 0) {
+            let now = new Date();
+            let runTime = Math.round((now - startTime) / 1000);
+            console.log(`Looping for ${timeToRun - runTime}s.`);
+
+            if (runTime > timeToRun) {
+              shouldLoop = false;
+            }
+          } else {
+            console.log('Looping continuously.');
+          }
+
+          if (shouldLoop) {
+            setTimeout(loop, interval);
+          } else {
+            console.log('Exceeded runtime. Terminating loop.');
+            res(null);
+          }
         }
 
         console.log('\x1b[1m', stats.getStatsString(), '\x1b[0m');
@@ -136,43 +166,11 @@ let VTOWait = () => {
     })();
   })
   .then(claimOpportunity);
-
-
-  //   let loop = () => {
-  //     const interval = (5 + (Math.random() * 20)) * 1000;
-
-  //     console.log('\x1b[1m', stats.getStatsString(), '\x1b[0m');
-  //     console.log(`Waiting ${interval}ms until next check.\n`);
-
-  //     setTimeout(() => {
-  //       console.log(new Date().toLocaleTimeString());
-        
-  //       return getOpportunities()
-  //         .then(findActiveVTO)
-  //         .then(activeVTO => {
-  //           if (activeVTO) {
-  //             console.log('Found a VTO opportunity!');
-  //             res(activeVTO);
-  //           } else {
-  //             console.log('No VTO opportunities apply to you. =(\n');
-  //             loop();
-  //           }
-  //         }).catch(err => {
-  //           console.error(err);
-  //           console.log('Authentication expired. Attempting to reauthenticate.');
-
-  //           main();
-  //         });
-
-  //     }, interval);
-  //   };
-
-  //   loop();
-  // })
-  //   .then(claimOpportunity);
 };
 
 let claimOpportunity = (opportunity) => {
+  if (opportunity === null) { return; }
+
   console.log('Attempting to claim opportunity.');
   let startTime = new Date(opportunity.start_time).getTime() / 1000;
   
