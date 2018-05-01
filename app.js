@@ -105,7 +105,7 @@ let findActiveVTO = (opportunities) => {
 
   if (vtoArr) {
     for (let i = 0; i < vtoArr.length; ++i) {
-      opportunityLog = ` --${i + 1}) ${vtoArr[i]['opportunity_id']}: ${vtoArr[i].workgroup}`;
+      opportunityLog = ` --${i + 1}) ${vtoArr[i]['opportunity_id']}: ${vtoArr[i].workgroup} | ${vtoArr[i].start_time} → ${vtoArr[i].end_time}`;
       
       if (vtoArr[i].active) {
         console.log(opportunityLog, '\x1b[32m', '✓', '\x1b[0m');
