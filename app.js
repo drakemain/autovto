@@ -199,11 +199,6 @@ let claimOpportunity = (opportunity) => {
 
       console.log(`Status: ${response.statusCode}`);
 
-      if (response.statusCode !== 400) {
-        rej(response.statusMessage);
-        return;
-      }
-
       response.on('data', chunk => {
         body += chunk;
       });
@@ -213,6 +208,7 @@ let claimOpportunity = (opportunity) => {
       });
 
       response.on('error', err => {
+        console.log()
         rej(err);
       });
     });
