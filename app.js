@@ -88,12 +88,15 @@ let getOpportunities = () => {
       });
   
       response.on('error', err => {
+        console.log('Error on GET');
+        console.error(err);
         rej(err);
       });
     }).on('error', err => {
+      console.log('Could not GET');
       rej(err);
     });
-  });
+  })
 };
 
 let findActiveVTO = (opportunities) => {
@@ -158,10 +161,14 @@ let VTOWait = () => {
         console.log('\x1b[1m', stats.getStatsString(), '\x1b[0m');
         console.log(`Waiting ${interval}ms until next check.\n`);
       }).catch(err => {
-        console.error(err);
-        console.log('Authentication expired. Attempting to reauthenticate.');
-
-        main();
+        console.log('\n' + err);
+        if (err.code === "ENOTFOUND" || err.code === "ETIMEDOUT") {
+          console.log('Connection Failure!\nTrying again in ' + interval + 'ms');
+          setTimeout(loop, interval);
+        } else {
+          console.log('Authentication expired. Attempting to reauthenticate.');
+          main();
+        }
       });
     })();
   })
@@ -208,7 +215,6 @@ let claimOpportunity = (opportunity) => {
       });
 
       response.on('error', err => {
-        console.log()
         rej(err);
       });
     });
