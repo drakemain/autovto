@@ -220,7 +220,8 @@ let claimOpportunity = (opportunity) => {
         console.log(`VTO Request Response Body:\n${body}`);
         try {
           res(JSON.parse(body));
-        } catch {
+        } catch(err) {
+          console.error(err);
           res({});
         }
       });
