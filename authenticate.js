@@ -5,11 +5,13 @@ const readline = require('readline');
 const path = require('path');
 const fs = require('fs');
 
+let uInput = {
+  username: '',
+  pw: '',
+  obfuscatedPhoneNumber: ''
+}
+
 let RequestContextKey = '';
-// let login = '';
-let login = 'drakmain';
-let pw = 'Neednewjob0123';
-let obfuscatedPhoneNumber = '';
 let codeReceipt = '';
 let authenticationKey = '';
 let SAMLResponse = '';
@@ -110,7 +112,7 @@ let getSAMLRedirect = () => {
 };
 
 let getRequestContextKey = (SAMLUrl) => {
-  console.log('\n');
+  console.log('\nFetching request context key.');
   return getRequest(SAMLUrl, true).then(response => {
     let $ = cheerio.load(response.responseBody);
     RequestContextKey = $('input[name="RequestContextKey"]').attr().value;
@@ -120,47 +122,48 @@ let getRequestContextKey = (SAMLUrl) => {
 };
 
 let inputUserName = () => {
-  console.log('\n');
-  return new Promise((res) => {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-  
-    rl.question('Enter username: ', username => {
-      rl.close();
-      login = username;
-      res(username);
-    });
+  responseBody = '';
+
+  return new Promise(res => {
+    (function loop() {
+      let username = '';
+
+      return prompt('\nEnter Username: ')
+        .then(inputUserName => {
+          username = inputUserName;
+          return loadRegisteredUserData(inputUserName)
+        })
+        .then(hasExistingTokens => {
+          return submitUsername(username);
+        })
+        .then(responseBody => {
+          let nextAuthStep = getAuthenticationStep(cheerio.load(responseBody)('form'));
+
+          if (nextAuthStep === 'ENTER_USERNAME') {
+            console.log('\x1b[31m', '\nInvalid username!', '\x1b[0m');
+            loop();
+          } else if (nextAuthStep === '') {
+            throw new Error('Could not verify username!');
+          } else {
+            uInput.username = username;
+
+            if (nextAuthStep === 'ENTER_PASSWORD') {
+              setAuthenticationKey(responseBody);
+              res({step: nextAuthStep});
+            } else {
+              res({step: nextAuthStep, form: responseBody})
+            }
+          }
+        });
+    })();
   });
 };
 
-let getRegisteredUserData = (username) => {
-  console.log('\nChecking for saved tokens...');
-  return getRegisteredUsers().then(users => {
-    if (users[username] && users[username]['amzn-idp-auth-key'] 
-    && users[username]['amzn-idp-auth-token']
-    && users[username]['amzn-idp-td-key']
-    && users[username]['amzn-idp-td-token']) {
-      console.log('\x1b[32m', 'Found existing tokens.', '\x1b[0m');
-      cookies['amzn-idp-auth-key'] = users[username]['amzn-idp-auth-key'];
-      cookies['amzn-idp-auth-token'] = users[username]['amzn-idp-auth-token'];
-      cookies['amzn-idp-td-key'] = users[username]['amzn-idp-td-key'];
-      cookies['amzn-idp-td-token'] = users[username]['amzn-idp-td-token'];
-      return true;
-    } else {
-      console.log('\x1b[31m', 'No existing tokens.', '\x1b[0m');
-      return false;
-    }
-  });
-};
-
-let submitUsername = () => {
-  console.log('\n');
-  console.log(`Attempting to POST login id: ${login}.`);
+let submitUsername = username => {
+  console.log(`\nAttempting to POST username: ${username}.`);
 
   const data = queryString.stringify({
-    login: login,
+    login: username,
     RequestContextKey: RequestContextKey,
     AuthenticationStep: 'ENTER_USERNAME'
   });
@@ -182,29 +185,37 @@ let submitUsername = () => {
 };
 
 let selectPhone = phoneSelectFormHTML => {
-  console.log('\n');
-  let $ = cheerio.load(phoneSelectFormHTML);
-  let obfuscatedPhoneNumbers = $('#phoneNumberSelectionIndex').children('option').toArray();
+  return new Promise((res, rej) => {
+    let obfuscatedPhoneNumbers;
 
-  if (obfuscatedPhoneNumbers.length > 2) {
-    let phoneNumbers = {};
-
-    for (let i = 1; i < obfuscatedPhoneNumbers.length; ++i) {
-      phoneNumbers[obfuscatedPhoneNumbers[i].attribs.value] = obfuscatedPhoneNumbers[i].children[0].data;
+    try {
+      let $ = cheerio.load(phoneSelectFormHTML);
+      obfuscatedPhoneNumbers = $('#phoneNumberSelectionIndex').children('option').toArray();
+    } catch(err) {
+      console.error(err);
+      rej(new Error('Failed to load phone number list.'));
     }
 
-    // TODO: Prompt for device selection
-  } else {
-    obfuscatedPhoneNumber = obfuscatedPhoneNumbers[1].children[0].data;
-    console.log(`Selected ${obfuscatedPhoneNumber} to receive verification code.`);
-    return Promise.resolve(0);
-  }
+    // First index is dropdown prompt text ('Select your mobile phone number')
+    if (obfuscatedPhoneNumbers.length > 2) {
+      let phoneNumbers = {};
+
+      for (let i = 1; i < obfuscatedPhoneNumbers.length; ++i) {
+        phoneNumbers[obfuscatedPhoneNumbers[i].attribs.value] = obfuscatedPhoneNumbers[i].children[0].data;
+      }
+
+      // TODO: Prompt for device selection
+    } else {
+      uInput.obfuscatedPhoneNumber = obfuscatedPhoneNumbers[1].children[0].data;
+      console.log('\x1b[32m', `Selected ${uInput.obfuscatedPhoneNumber} to receive verification code.`, '\x1b[0m');
+      res(0);
+    }
+  });
 };
 
 let requestVerificationCode = phoneNumberSelectionIndex => {
-  console.log('\n');
   const data = queryString.stringify({
-    login: 'drakmain',
+    login: uInput.username,
     RequestContextKey: RequestContextKey,
     AuthenticationStep: 'SELECT_PHONE',
     phoneNumberSelectionIndex: phoneNumberSelectionIndex
@@ -221,27 +232,36 @@ let requestVerificationCode = phoneNumberSelectionIndex => {
   };
 
   return postRequest(options, data, true).then(codeInputForm => {
-    console.log('\n');
-    console.log(`A verification code has been sent to ${obfuscatedPhoneNumber}.`);
+    console.log(`\nA verification code has been sent to ${uInput.obfuscatedPhoneNumber}.`);
     let $ = cheerio.load(codeInputForm.responseBody);
     codeReceipt = $('#dropDownForm').children('input[name="codeReceipt"]').attr().value;
     console.log('\x1b[32m', `Code Receipt: ${codeReceipt}`, '\x1b[0m');
+
+    return {step: getAuthenticationStep($('#dropDownForm'))};
   });
 };
 
 let inputVerificationCode = () => {
-  console.log('\n');
-  return new Promise((res) => {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-  
-    rl.question('Enter the verification code: ', code => {
-      rl.close();
-      res(code);
-    });
-  });  
+  return new Promise(res => {
+    (function loop() {
+      prompt('\nEnter the verification code: ')
+        .then(submitVerificationCode)
+        .then(responseBody => {
+          let nextAuthStep = getAuthenticationStep(cheerio.load(responseBody)('form'));
+
+          if (nextAuthStep === "ENTER_OTP") {
+            console.log('\x1b[31m', '\nInvalid code!', '\x1b[0m');
+            loop();
+          } else if (nextAuthStep === '') {
+            throw new Error('Could not verify code!');
+          } else {
+            console.log('Successfully submitted code.');
+            setAuthenticationKey(responseBody);
+            res({step: nextAuthStep, form: responseBody});
+          }
+        })
+    })();
+  });
 };
 
 let submitVerificationCode = (code) => {
@@ -249,13 +269,13 @@ let submitVerificationCode = (code) => {
   console.log(`Attempting to POST code: ${code}.`);
 
   const data = queryString.stringify({
-    login: 'drakmain',
+    login: uInput.username,
     RequestContextKey: RequestContextKey,
     AuthenticationStep: 'ENTER_OTP',
     phoneNumberSelectionIndex: 0,
     code: code,
     trustedDevice: 1,
-    obfuscatedPhoneNumber: obfuscatedPhoneNumber,
+    obfuscatedPhoneNumber: uInput.obfuscatedPhoneNumber,
     codeReceipt: codeReceipt
   });
 
@@ -274,35 +294,25 @@ let submitVerificationCode = (code) => {
   });
 };
 
-let setAuthenticationKey = (pwFormHTML) => {
-  fs.writeFile(path.join(__dirname, 'pwform.html'), pwFormHTML, err => {
-    if (err) {console.error(err);}
-  });
-  let $ = cheerio.load(pwFormHTML);
-  authenticationKey = $('input[name="authenticationKey"]').attr().value;
-
-  console.log('\x1b[32m', `authenticationKey: ${authenticationKey}`, '\x1b[0m');
-};
-
 let inputPassword = () => {
-  console.log('\n');
   return new Promise((res) => {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-  
-    rl.question('Enter your password: ', password => {
-      rl.close();
-      res(password);
-    });
+    (function loop() {
+      prompt('\nEnter Password: ')
+        .then(submitPassword)
+        .then(success => {
+          if (success) {
+            res();
+          } else {
+            loop();
+          }
+        })
+    })()
   });  
 };
 
 let submitPassword = (password) => {
-  console.log('\n');
   const data = queryString.stringify({
-    login: 'drakmain',
+    login: uInput.username,
     RequestContextKey: RequestContextKey,
     AuthenticationStep: 'ENTER_PASSWORD',
     authenticationKey: authenticationKey,
@@ -321,15 +331,31 @@ let submitPassword = (password) => {
   };
 
   return postRequest(options, data, true).then(pwSubmission => {
-    let $ = cheerio.load(pwSubmission.responseBody);
-    SAMLResponse = $('input[name="SAMLResponse"]').attr().value;
-    console.log('\x1b[32m', 'Got SAMLResponse', '\x1b[0m');
+    try {
+      let $ = cheerio.load(pwSubmission.responseBody);
+      SAMLResponse = $('input[name="SAMLResponse"]').attr().value;
+      console.log('\x1b[32m', 'Got SAMLResponse', '\x1b[0m');
+      uInput.pw = password;
+      return true;
+    } catch (err) {
+      console.log('\x1b[31m', '\nInvalid password!', '\x1b[0m');
+      return false;
+    }
   });
 };
 
+let setAuthenticationKey = (pwFormHTML) => {
+  fs.writeFile(path.join(__dirname, 'pwform.html'), pwFormHTML, err => {
+    if (err) {console.error(err);}
+  });
+  let $ = cheerio.load(pwFormHTML);
+  authenticationKey = $('input[name="authenticationKey"]').attr().value;
+
+  console.log('\x1b[32m', `authenticationKey: ${authenticationKey}`, '\x1b[0m');
+};
+
 let getEsspSession = () => {
-  console.log('\n');
-  console.log('Attempting to fetch _essp_session.');
+  console.log('\nAttempting to fetch _essp_session.');
   const data = queryString.stringify({
     SAMLResponse: SAMLResponse
   });
@@ -349,10 +375,8 @@ let getEsspSession = () => {
 };
 
 let getCSRFToken = () => {
-  console.log('\n');
-  
   return new Promise((res, rej) => {
-    console.log('Attempting to fetch X-CSRF-Token.');
+    console.log('\nAttempting to fetch X-CSRF-Token.');
 
     https.get({
       hostname: 'hub.amazon.work',
@@ -389,14 +413,19 @@ let getCSRFToken = () => {
   });
 };
 
-let buildCookieString = (authData) => {
-  let authKeyString = '';
-  for (let key in authData) {
-    authKeyString += `${key}=${authData[key]}; `;
-  }
-
-  return authKeyString;
-};
+let prompt = promptMessage => {
+  return new Promise((res) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+  
+    rl.question(promptMessage, userInput => {
+      rl.close();
+      res(userInput);
+    });
+  });
+}
 
 let setCookie = (cookieArr) => {
   if (!cookieArr) { return; }
@@ -410,16 +439,45 @@ let setCookie = (cookieArr) => {
   }
 };
 
-let getRegisteredUsers = () => {
+let getRegisteredUserTokens = username => {
   return new Promise((res, rej) => {
     fs.readFile(path.join(__dirname, 'users.json'), (err, data) => {
       if (err) { rej(err); return; }
 
       res(JSON.parse(data));
     });
+  }).then(users => {
+    if (!username) { return users; }
+
+    if (users[username]) {
+      return users[username];
+    } else {
+      return {};
+    }
   }).catch(err => {
     if (err.code === 'ENOENT') {
       return {};
+    }
+  });
+};
+
+let loadRegisteredUserData = (username) => {
+  console.log('\nChecking for saved tokens...');
+  return getRegisteredUserTokens(username).then(userData => {
+    if (Object.keys(userData).length > 0 
+    && userData['amzn-idp-auth-key'] 
+    && userData['amzn-idp-auth-token']
+    && userData['amzn-idp-td-key']
+    && userData['amzn-idp-td-token']) {
+      console.log('\x1b[32m', 'Found existing tokens.', '\x1b[0m');
+      cookies['amzn-idp-auth-key'] = userData['amzn-idp-auth-key'];
+      cookies['amzn-idp-auth-token'] = userData['amzn-idp-auth-token'];
+      cookies['amzn-idp-td-key'] = userData['amzn-idp-td-key'];
+      cookies['amzn-idp-td-token'] = userData['amzn-idp-td-token'];
+      return true;
+    } else {
+      console.log('\x1b[31m', 'No existing tokens.', '\x1b[0m');
+      return false;
     }
   });
 };
@@ -434,87 +492,31 @@ let addNewUser = (newUser) => {
     'amzn-idp-td-token': newUser.cookies['amzn-idp-td-token']
   };
 
-  return getRegisteredUsers().then(users => {
-    users[newUser.login] = idp;
+  return getRegisteredUserTokens().then(users => {
+    users[newUser.username] = idp;
     let stringifiedUsers = JSON.stringify(users);
     return stringifiedUsers;
   }).then(updatedUsersString => {
     return new Promise((res, rej) => {
       fs.writeFile(path.join(__dirname, 'users.json'), updatedUsersString, (err) => {
         if (err) { rej(err); return; }
-        console.log(`Successfully saved user: ${newUser.login}`);
+        console.log(`Successfully saved user: ${newUser.username}`);
         res();
       });
     });
   });
 };
 
-let loginPrompt = () => {
-  // return inputUserName()
-  //   .then(getRegisteredUserData)
-  //   .then(isRegistered => {
-  //     console.log(`Is registered: ${isRegistered}.`);
-  //     if (isRegistered) {
-  //       return submitUsername()
-  //         .then(setAuthenticationKey)
-  //         .then(inputPassword)
-  //         .then(submitPassword);
-  //     } else {
-  //       return submitUsername()
-  //         .then(selectPhone)
-  //         .then(requestVerificationCode)
-  //         .then(inputVerificationCode)
-  //         .then(submitVerificationCode)
-  //         .then(setAuthenticationKey)
-  //         .then(inputPassword)
-  //         .then(submitPassword);
-  //     }
-  //   });
-
-  return getRegisteredUserData(login)
-    .then(isRegistered => {
-      console.log(`Is registered: ${isRegistered}.`);
-      if (isRegistered) {
-        return submitUsername()
-          .then(setAuthenticationKey)
-          // .then(inputPassword)
-          .then(() => {
-            return submitPassword(pw);
-          });
-      } else {
-        return submitUsername()
-          .then(selectPhone)
-          .then(requestVerificationCode)
-          .then(inputVerificationCode)
-          .then(submitVerificationCode)
-          .then(setAuthenticationKey)
-          // .then(inputPassword)
-          .then(() => {
-            return submitPassword(pw);
-          });
-      }
-    });
-};
-
 module.exports.getAuthKeys = () => {
   return getSAMLRedirect()
     .then(getRequestContextKey)
-
-    // .then(inputUserName)
-    // .then(submitUsername)
-    // .then(selectPhone)
-    // .then(requestVerificationCode)
-    // .then(inputVerificationCode)
-    // .then(submitVerificationCode)
-    // .then(inputPassword)
-    // .then(submitPassword)
     .then(loginPrompt)
 
     .then(getEsspSession)
     .then(getCSRFToken)
     .then(() => {
       let user = {};
-      user.login = login;
+      user.username = username;
       user.cookies = cookies;
       return addNewUser(user);
     })
@@ -529,4 +531,105 @@ module.exports.getAuthKeys = () => {
     .catch(console.error);
 };
 
+let getAuthenticationStep = cheerioForm => {
+  let step = '';
+  
+  try {
+    step = cheerioForm.children('input[name="AuthenticationStep"]').attr().value;
+  } catch(err) {
+    console.error('Failed to get authentication step!');
+    console.log(err);
+  }
+
+  return step;
+}
+
+let loginPrompt = (nextStep) => {
+  nextStep = nextStep || 'ENTER_USERNAME';
+  let entryStep = {step: nextStep};
+
+  return new Promise(res => {
+    (function loop(stepData) {
+      let step = stepData.step;
+
+      if (step === 'ENTER_USERNAME') {
+        inputUserName()
+          .then(loop);
+      } else if (step === 'SELECT_PHONE') {
+        selectPhone(stepData.form)
+          .then(requestVerificationCode)
+          .then(loop);
+      } else if (step === 'ENTER_OTP') {
+        inputVerificationCode()
+          .then(loop);
+      } else if (step === 'ENTER_PASSWORD') {
+        inputPassword()
+          .then(res);
+      } else {
+        let err = new Error('Login Prompt could not determine login step!');
+        err.step = step;
+        throw err;
+      }
+    })(entryStep);
+  });
+};
+
+let buildCookieString = (authData) => {
+  let authKeyString = '';
+  for (let key in authData) {
+    authKeyString += `${key}=${authData[key]}; `;
+  }
+
+  return authKeyString;
+};
+
 module.exports.buildCookieString = buildCookieString;
+
+let CLI = () => {
+  return getSAMLRedirect()
+    .then(getRequestContextKey)
+    .then(loginPrompt)
+    .then(getEsspSession)
+    .then(getCSRFToken)
+    .then(() => {
+      let user = {};
+      user.username = uInput.username;
+      user.cookies = cookies;
+      return addNewUser(user);
+    })
+    .then(() => {
+      console.log('\nAuthentication complete.\n');
+
+      return {
+        user: uInput.username,
+        pw: uInput.pw,
+        cookies: cookies,
+        'X-CSRF-TOKEN': csrfToken
+      };
+    });
+};
+
+module.exports.CLI = CLI;
+
+let reauthenticate = (username, password) => {
+  loadRegisteredUserData(username);
+
+  return getSAMLRedirect()
+    .then(RequestContextKey)
+    .then(submitUsername)
+    .then(submitPassword)
+    .then(getEsspSession)
+    .then(getCSRFToken)
+    .then(() => {
+      console.log('\nAuthentication complete.\n');
+
+      return {
+        user: uInput.username,
+        pw: uInput.pw,
+        cookies: cookies,
+        'X-CSRF-TOKEN': csrfToken
+      };
+    });
+}
+
+module.exports.reauthenticate = reauthenticate;
