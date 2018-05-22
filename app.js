@@ -22,12 +22,14 @@ let stats = {
   missedVTO: 0,
   checks: 0,
   authRefresh: 0,
+  ECONNRESET: 0,
 
   getStatsString() {
     return `Successfully Accepted: ${this.acceptedVto}`
     + ` | Missed Opportunities: ${this.missedVTO}` 
     + ` | Total Checks: ${this.checks}`
-    + ` | Total Authentication: ${this.authRefresh}`;
+    + ` | Total Authentication: ${this.authRefresh}`
+    + ` | ECONNRESET ${this.ECONNRESET}`;
   }
 };
 
@@ -165,6 +167,10 @@ let VTOWait = () => {
         if (err.code === "ENOTFOUND" || err.code === "ETIMEDOUT") {
           console.log('Connection Failure!\nTrying again in ' + interval + 'ms');
           setTimeout(loop, interval);
+        } else if (err.code === "ECONNRESET") {
+          ++stats.ECONNRESET;
+          console.log('Connection Reset!\nWaiting 1 minute.');
+          setTimeout(main, 60000);
         } else {
           console.log('Authentication expired. Attempting to reauthenticate.');
           main();
@@ -211,7 +217,12 @@ let claimOpportunity = (opportunity) => {
       });
 
       response.on('end', () => {
-        res(JSON.parse(body));
+        console.log(`VTO Request Response Body:\n${body}`);
+        try {
+          res(JSON.parse(body));
+        } catch {
+          res({});
+        }
       });
 
       response.on('error', err => {
