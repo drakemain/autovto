@@ -17,6 +17,26 @@ const checkInterval = {
   rand: 20
 };
 
+let parseCLIParams = () => {
+  for (i = 0; i < process.argv.length; i += 2) {
+    let param = process.argv[i];
+    let value = process.argv[i + 1];
+    switch(param) {
+      case 'mininterval':
+      if (!Number.isNaN(value)) {checkInterval.min = Number(value);}      
+      break;
+
+      case 'randinterval':
+      if (!Number.isNaN(value)) {checkInterval.rand = Number(value);}      
+      break;
+
+      case 'duration':
+      if (!Number.isNaN(value)) {timeToRun = Number(value);}      
+      break;
+    }
+  }
+};
+
 let stats = {
   acceptedVto: 0,
   missedVTO: 0,
@@ -34,9 +54,8 @@ let stats = {
 };
 
 let main = () => {
-  checkInterval.min = Number(process.argv[2]) || checkInterval.min;
-  checkInterval.rand = Number(process.argv[3]) || checkInterval.rand;
-  timeToRun = Number(process.argv[4]) || timeToRun;
+  parseCLIParams();
+  console.log(checkInterval, timeToRun);
 
   getAuthKeys().then(authHeaders => {
     ++stats.authRefresh;
@@ -217,10 +236,9 @@ let claimOpportunity = (opportunity) => {
       });
 
       response.on('end', () => {
-        console.log(`VTO Request Response Body:\n${body}`);
         try {
           res(JSON.parse(body));
-        } catch {
+        } catch(err) {
           res({});
         }
       });
