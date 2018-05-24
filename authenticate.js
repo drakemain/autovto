@@ -28,7 +28,7 @@ let getRequest = (requestURL, shouldReturnBody = false) => {
     
     https.get(requestURL, response => {
       console.log(`GET Request: ${requestURL}`);
-      console.log(` Status: ${response.statusCode}`);
+      console.log(` Status ${response.statusCode}: ${response.statusMessage}`);
       
       if (response.statusCode !== 302 && response.statusCode !== 200) {
         rej(new Error('Bad response.'));
@@ -66,7 +66,7 @@ let postRequest = (options, urlEncodedData, shouldReturnBody = false) => {
 
     let postRequest = https.request(options, response => {
       console.log(`POST Request: ${options.hostname}${options.path}`);
-      console.log(`Status: ${response.statusCode}`);
+      console.log(` Status ${response.statusCode}: ${response.statusMessage}`);
 
       result.headers = response.headers;
       setCookie(result.headers['set-cookie']);
@@ -586,6 +586,8 @@ let buildCookieString = (authData) => {
 module.exports.buildCookieString = buildCookieString;
 
 let CLI = () => {
+  console.log('CLI Login.');
+
   return getSAMLRedirect()
     .then(getRequestContextKey)
     .then(loginPrompt)
@@ -612,12 +614,19 @@ let CLI = () => {
 module.exports.CLI = CLI;
 
 let reauthenticate = (username, password) => {
+  console.log(`Attempting to reauthenticate ${username}.`);
+  console.log(uInput);
+
   loadRegisteredUserData(username);
 
   return getSAMLRedirect()
     .then(RequestContextKey)
-    .then(submitUsername)
-    .then(submitPassword)
+    .then(() => {
+      return submitUsername(username);
+    })
+    .then(() => {
+      return submitPassword(password);
+    })
     .then(getEsspSession)
     .then(getCSRFToken)
     .then(() => {
