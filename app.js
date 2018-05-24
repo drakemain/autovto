@@ -1,12 +1,9 @@
-const getAuthKeys = require('./authenticate').getAuthKeys;
+const login = require('./authenticate').CLI;
 const buildCookieString = require('./authenticate').buildCookieString;
-// const renewCSRFToken = require('./authenticate').getCSRFToken;
 const https = require('https');
 const queryStringify = require('querystring').stringify;
 
 let csrfToken;
-// let csrfTokenStartTime;
-// const csrfTokenLifeTimeSeconds = 0;
 let cookieString;
 let cookies;
 const startTime = new Date();
@@ -23,15 +20,18 @@ let parseCLIParams = () => {
     let value = process.argv[i + 1];
     switch(param) {
       case 'mininterval':
-      if (!Number.isNaN(value)) {checkInterval.min = Number(value);}      
+      if (!isNaN(value)) {checkInterval.min = Number(value);}
+      else {console.log('\x1b[31m', `\nInvalid ${param} (${value})! Using default: ${checkInterval.min}`, '\x1b[0m');}
       break;
 
       case 'randinterval':
-      if (!Number.isNaN(value)) {checkInterval.rand = Number(value);}      
+      if (!isNaN(value)) {checkInterval.rand = Number(value);}
+      else {console.log('\x1b[31m', `\nInvalid ${param} (${value})! Using default: ${checkInterval.rand}`, '\x1b[0m');}
       break;
 
       case 'duration':
-      if (!Number.isNaN(value)) {timeToRun = Number(value);}      
+      if (!isNaN(value)) {timeToRun = Number(value);}
+      else {console.log('\x1b[31m', `\nInvalid ${param} (${value})! Using default: ${timeToRun}`, '\x1b[0m');}
       break;
     }
   }
@@ -55,9 +55,8 @@ let stats = {
 
 let main = () => {
   parseCLIParams();
-  console.log(checkInterval, timeToRun);
 
-  getAuthKeys().then(authHeaders => {
+  login().then(authHeaders => {
     ++stats.authRefresh;
     cookies = authHeaders.cookies;
     cookieString = buildCookieString(authHeaders.cookies);
@@ -65,6 +64,8 @@ let main = () => {
     
     return VTOWait();
     
+  }).then(() => {
+    console.log('Final stats:\n' + stats.getStatsString());
   }).catch(err => {
     console.error(err);
     main();
@@ -229,7 +230,7 @@ let claimOpportunity = (opportunity) => {
     let postRequest = https.request(options, response => {
       let body = '';
 
-      console.log(`Status: ${response.statusCode}`);
+      console.log(`Status ${response.statusCode}: ${response.statusMessage}`);
 
       response.on('data', chunk => {
         body += chunk;
@@ -257,8 +258,7 @@ let claimOpportunity = (opportunity) => {
       return VTOWait();
     } else {
       ++stats.acceptedVto;
-      console.log(response);
-      console.log('This might have worked!... Hopefully.');
+      console.log('Success!');
     }
   });
 };
