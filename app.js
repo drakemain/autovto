@@ -1,4 +1,5 @@
 const login = require('./authenticate').CLI;
+const reauthenticate = require('./authenticate').reauthenticate;
 const buildCookieString = require('./authenticate').buildCookieString;
 const https = require('https');
 const queryStringify = require('querystring').stringify;
@@ -72,7 +73,7 @@ let main = () => {
   });
 };
 
-let getOpportunities = () => {
+let fetchOpportunities = () => {
   const currentTime = new Date();
   let timeSinceStart = currentTime - startTime;
   timeSinceStart /= 1000;
@@ -121,7 +122,7 @@ let getOpportunities = () => {
   })
 };
 
-let findActiveVTO = (opportunities) => {
+let checkOpportunities = (opportunities) => {
   console.log('Examining opportunities..');
   if (!opportunities) { return null; }
 
@@ -150,8 +151,8 @@ let VTOWait = () => {
       const interval = (checkInterval.min + (Math.random() * checkInterval.rand)) * 1000;
       console.log("\x1b[40m", new Date().toLocaleTimeString(), "\x1b[0m");
         
-      return getOpportunities()
-      .then(findActiveVTO)
+      return fetchOpportunities()
+      .then(checkOpportunities)
       .then(activeVTO => {
         if (activeVTO) {
           console.log('Found a VTO opportunity!');
@@ -193,7 +194,7 @@ let VTOWait = () => {
           setTimeout(main, 60000);
         } else {
           console.log('Authentication expired. Attempting to reauthenticate.');
-          main();
+          return reauthenticate();
         }
       });
     })();

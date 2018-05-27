@@ -18,6 +18,15 @@ let SAMLResponse = '';
 let csrfToken = '';
 let cookies = {};
 
+let initGlobals = () => {
+  RequestContextKey = '';
+  codeReceipt = '';
+  authenticationKey = '';
+  SAMLResponse = '';
+  csrfToken = '';
+  cookies = {};
+}
+
 let getRequest = (requestURL, shouldReturnBody = false) => {
   return new Promise((res, rej) => {
     let result = {
@@ -588,6 +597,8 @@ module.exports.buildCookieString = buildCookieString;
 let CLI = () => {
   console.log('CLI Login.');
 
+  initGlobals();
+
   return getSAMLRedirect()
     .then(getRequestContextKey)
     .then(loginPrompt)
@@ -614,15 +625,16 @@ let CLI = () => {
 module.exports.CLI = CLI;
 
 let reauthenticate = (username, password) => {
-  console.log(`Attempting to reauthenticate ${username}.`);
-  console.log(uInput);
+  console.log(`Attempting to reauthenticate ${username}.\n`);
 
+  initGlobals();
   loadRegisteredUserData(username);
 
   return getSAMLRedirect()
-    .then(RequestContextKey)
+    .then(getRequestContextKey)
     .then(() => {
-      return submitUsername(username);
+      return submitUsername(username)
+      .then(setAuthenticationKey);
     })
     .then(() => {
       return submitPassword(password);
