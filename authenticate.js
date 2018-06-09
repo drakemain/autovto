@@ -207,13 +207,29 @@ let selectPhone = phoneSelectFormHTML => {
 
     // First index is dropdown prompt text ('Select your mobile phone number')
     if (obfuscatedPhoneNumbers.length > 2) {
-      let phoneNumbers = {};
+      // Phone number selector is untested
+      (function phoneSelector() {
+        console.log('Select a phone number to receive a verification code.')
 
-      for (let i = 1; i < obfuscatedPhoneNumbers.length; ++i) {
-        phoneNumbers[obfuscatedPhoneNumbers[i].attribs.value] = obfuscatedPhoneNumbers[i].children[0].data;
-      }
+        for (let i = 1; i < obfuscatedPhoneNumbers.length; ++i) {
+          console.log(`1) ${obfuscatedPhoneNumbers[i].children[0].data}`);
+        }
 
-      // TODO: Prompt for device selection
+        prompt(`Enter selection (1-${obfuscatedPhoneNumbers.length})`)
+        .then(indexSelection => {
+          if (!isNaN(indexSelection)) { indexSelection = Number(indexSelection); }
+          else { console.log('Input must be numeric!'); phoneSelector(); }
+
+          if (indexSelection > 0 && indexSelection <= obfuscatedPhoneNumbers.length) {
+            uInput.obfuscatedPhoneNumber = obfuscatedPhoneNumbers[indexSelection].children[0].data;
+          } else {
+            console.log('Input is outside possible range.');
+            phoneSelector();
+          }
+        });
+      })();
+      // Phone number selector is untested
+
     } else {
       uInput.obfuscatedPhoneNumber = obfuscatedPhoneNumbers[1].children[0].data;
       console.log('\x1b[32m', `Selected ${uInput.obfuscatedPhoneNumber} to receive verification code.`, '\x1b[0m');
@@ -258,7 +274,7 @@ let inputVerificationCode = () => {
         .then(responseBody => {
           let nextAuthStep = getAuthenticationStep(cheerio.load(responseBody)('form'));
 
-          if (nextAuthStep === "ENTER_OTP") {
+          if (nextAuthStep === 'ENTER_OTP') {
             console.log('\x1b[31m', '\nInvalid code!', '\x1b[0m');
             loop();
           } else if (nextAuthStep === '') {

@@ -200,8 +200,7 @@ let run = () => {
           console.log(`Trying again in ${Math.floor(interval / 1000)}s.`);
           setTimeout(loop, interval);
         } else {
-          console.log('Authentication expired. Attempting to reauthenticate.');
-          // TODO: TEST THIS
+          console.log('Authentication expired.');
           return reauthenticate(user, pw).then(loadAuthData).then(loop);
         }
       });
