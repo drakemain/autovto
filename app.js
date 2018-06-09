@@ -188,7 +188,7 @@ let run = () => {
         }
         
         if (err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-          console.log(`Connection Failure! Trying again in ${interval}s.`);
+          console.log(`Connection Failure! Trying again in ${Math.floor(interval / 1000)}s.`);
           console.log();
           setTimeout(loop, interval);
         } else if (err.code === 'ECONNRESET') {
@@ -197,7 +197,7 @@ let run = () => {
           console.log('Connection Reset! Trying again in 1 minute.');
           setTimeout(loop, 60000);
         } else if (err.code === 'NOVTO' || err.code === 'VTOCLAIM') {
-          console.log(`Trying again in ${interval}s.`);
+          console.log(`Trying again in ${Math.floor(interval / 1000)}s.`);
           setTimeout(loop, interval);
         } else {
           console.log('Authentication expired. Attempting to reauthenticate.');
