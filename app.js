@@ -39,7 +39,7 @@ let parseCLIParams = () => {
     }
   }
 
-  console.log(`Minimum interval: (${typeof(checkInterval.min)})${checkInterval.min}s | Random modifier: (${typeof(checkInterval.rand)})${checkInterval.rand}s | Run duration: (${typeof(timeToRun)})${timeToRun}s`);
+  console.log(`Minimum interval: ${checkInterval.min}s | Random modifier: ${checkInterval.rand}s | Run duration: ${timeToRun}s`);
 };
 
 let stats = {
@@ -58,7 +58,7 @@ let stats = {
   }
 };
 
-let main = () => {
+(() => {
   parseCLIParams();
 
   login().then(authHeaders => {
@@ -71,6 +71,52 @@ let main = () => {
   }).catch(err => {
     console.log('Unhandled error!');
     console.error(err);
+  });
+})();
+
+let run = () => {
+  return new Promise((res) => {
+    (function loop() {
+      let now = new Date();
+      let runTime = Math.round((now - startTime) / 1000);
+      const interval = (checkInterval.min + (Math.random() * checkInterval.rand)) * 1000;
+
+      console.log('\n\x1b[40m', new Date().toLocaleTimeString(), '\x1b[0m');
+      console.log(`Seconds since start: ${Math.round(runTime)}.`);
+
+      return fetchOpportunities()
+      .then(findActiveOpportunity)
+      .then(claimOpportunity)
+      .then(() => {
+        res();
+      })
+      .catch(err => {
+        console.log(err.message);
+        console.log('\n\x1b[1m', stats.getStatsString(), '\x1b[0m', '\n');
+
+        if (checkRuntimeExceeded(runTime)) {
+          res();
+          return;
+        }
+        
+        if (err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+          console.log(`Connection Failure! Trying again in ${Math.floor(interval / 1000)}s.`);
+          console.log();
+          setTimeout(loop, interval);
+        } else if (err.code === 'ECONNRESET') {
+          // This is untested and can therefore potentially not actually work.
+          ++stats.ECONNRESET;
+          console.log('Connection Reset! Trying again in 1 minute.');
+          setTimeout(loop, 60000);
+        } else if (err.code === 'NOVTO' || err.code === 'VTOCLAIM') {
+          console.log(`Trying again in ${Math.floor(interval / 1000)}s.`);
+          setTimeout(loop, interval);
+        } else {
+          console.log('Authentication expired.');
+          return reauthenticate(user, pw).then(loadAuthData).then(loop);
+        }
+      });
+    })();
   });
 };
 
@@ -143,71 +189,6 @@ let findActiveOpportunity = (opportunities) => {
   return activeOpportunity;
 };
 
-let checkRuntimeExceeded = (runTime) => {
-  if (timeToRun !== 0) {
-    if (runTime > timeToRun) {
-      return true;
-    }
-  }
-
-  return false;
-};
-
-let loadAuthData = (authData) => {
-  ++stats.authRefresh;
-  cookies = authData.cookies;
-  cookieString = buildCookieString(authData.cookies);
-  csrfToken = authData['X-CSRF-TOKEN'];
-  user = authData.user;
-  pw = authData.pw;
-};
-
-let run = () => {
-  return new Promise((res) => {
-    (function loop() {
-      let now = new Date();
-      let runTime = Math.round((now - startTime) / 1000);
-      const interval = (checkInterval.min + (Math.random() * checkInterval.rand)) * 1000;
-
-      console.log('\n\x1b[40m', new Date().toLocaleTimeString(), '\x1b[0m');
-      console.log(`Seconds since start: ${Math.round(runTime)}.`);
-
-      return fetchOpportunities()
-      .then(findActiveOpportunity)
-      .then(claimOpportunity)
-      .then(() => {
-        res();
-      })
-      .catch(err => {
-        console.log(err.message);
-        console.log('\n\x1b[1m', stats.getStatsString(), '\x1b[0m', '\n');
-
-        if (checkRuntimeExceeded(runTime)) {
-          res();
-          return;
-        }
-        
-        if (err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-          console.log(`Connection Failure! Trying again in ${Math.floor(interval / 1000)}s.`);
-          console.log();
-          setTimeout(loop, interval);
-        } else if (err.code === 'ECONNRESET') {
-          // This is untested and can therefore potentially not actually work.
-          ++stats.ECONNRESET;
-          console.log('Connection Reset! Trying again in 1 minute.');
-          setTimeout(loop, 60000);
-        } else if (err.code === 'NOVTO' || err.code === 'VTOCLAIM') {
-          console.log(`Trying again in ${Math.floor(interval / 1000)}s.`);
-          setTimeout(loop, interval);
-        } else {
-          console.log('Authentication expired.');
-          return reauthenticate(user, pw).then(loadAuthData).then(loop);
-        }
-      });
-    })();
-  });
-};
-
 let claimOpportunity = (opportunity) => {
   if (opportunity === null) {
     let err = new Error('No opportunity to claim.');
@@ -275,6 +256,25 @@ let claimOpportunity = (opportunity) => {
   });
 };
 
+let checkRuntimeExceeded = (runTime) => {
+  if (timeToRun !== 0) {
+    if (runTime > timeToRun) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+let loadAuthData = (authData) => {
+  ++stats.authRefresh;
+  cookies = authData.cookies;
+  cookieString = buildCookieString(authData.cookies);
+  csrfToken = authData['X-CSRF-TOKEN'];
+  user = authData.user;
+  pw = authData.pw;
+};
+
 let setCookie = (cookieArr) => {
   if (!cookieArr) { return; }
 
@@ -288,5 +288,3 @@ let setCookie = (cookieArr) => {
 
   cookieString = buildCookieString(cookies);
 };
-
-main();
