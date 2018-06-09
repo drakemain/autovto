@@ -9,7 +9,7 @@ let uInput = {
   username: '',
   pw: '',
   obfuscatedPhoneNumber: ''
-}
+};
 
 let RequestContextKey = '';
 let codeReceipt = '';
@@ -25,7 +25,7 @@ let initGlobals = () => {
   SAMLResponse = '';
   csrfToken = '';
   cookies = {};
-}
+};
 
 let getRequest = (requestURL, shouldReturnBody = false) => {
   return new Promise((res, rej) => {
@@ -131,8 +131,6 @@ let getRequestContextKey = (SAMLUrl) => {
 };
 
 let inputUserName = () => {
-  responseBody = '';
-
   return new Promise(res => {
     (function loop() {
       let username = '';
@@ -140,9 +138,9 @@ let inputUserName = () => {
       return prompt('\nEnter Username: ')
         .then(inputUserName => {
           username = inputUserName;
-          return loadRegisteredUserData(inputUserName)
+          return loadRegisteredUserData(inputUserName);
         })
-        .then(hasExistingTokens => {
+        .then(() => {
           return submitUsername(username);
         })
         .then(responseBody => {
@@ -160,7 +158,7 @@ let inputUserName = () => {
               setAuthenticationKey(responseBody);
               res({step: nextAuthStep});
             } else {
-              res({step: nextAuthStep, form: responseBody})
+              res({step: nextAuthStep, form: responseBody});
             }
           }
         });
@@ -209,24 +207,24 @@ let selectPhone = phoneSelectFormHTML => {
     if (obfuscatedPhoneNumbers.length > 2) {
       // Phone number selector is untested
       (function phoneSelector() {
-        console.log('Select a phone number to receive a verification code.')
+        console.log('Select a phone number to receive a verification code.');
 
         for (let i = 1; i < obfuscatedPhoneNumbers.length; ++i) {
           console.log(`1) ${obfuscatedPhoneNumbers[i].children[0].data}`);
         }
 
         prompt(`Enter selection (1-${obfuscatedPhoneNumbers.length})`)
-        .then(indexSelection => {
-          if (!isNaN(indexSelection)) { indexSelection = Number(indexSelection); }
-          else { console.log('Input must be numeric!'); phoneSelector(); }
+          .then(indexSelection => {
+            if (!isNaN(indexSelection)) { indexSelection = Number(indexSelection); }
+            else { console.log('Input must be numeric!'); phoneSelector(); }
 
-          if (indexSelection > 0 && indexSelection <= obfuscatedPhoneNumbers.length) {
-            uInput.obfuscatedPhoneNumber = obfuscatedPhoneNumbers[indexSelection].children[0].data;
-          } else {
-            console.log('Input is outside possible range.');
-            phoneSelector();
-          }
-        });
+            if (indexSelection > 0 && indexSelection <= obfuscatedPhoneNumbers.length) {
+              uInput.obfuscatedPhoneNumber = obfuscatedPhoneNumbers[indexSelection].children[0].data;
+            } else {
+              console.log('Input is outside possible range.');
+              phoneSelector();
+            }
+          });
       })();
       // Phone number selector is untested
 
@@ -284,7 +282,7 @@ let inputVerificationCode = () => {
             setAuthenticationKey(responseBody);
             res({step: nextAuthStep, form: responseBody});
           }
-        })
+        });
     })();
   });
 };
@@ -330,8 +328,8 @@ let inputPassword = () => {
           } else {
             loop();
           }
-        })
-    })()
+        });
+    })();
   });  
 };
 
@@ -450,7 +448,7 @@ let prompt = promptMessage => {
       res(userInput);
     });
   });
-}
+};
 
 let setCookie = (cookieArr) => {
   if (!cookieArr) { return; }
@@ -541,7 +539,7 @@ module.exports.getAuthKeys = () => {
     .then(getCSRFToken)
     .then(() => {
       let user = {};
-      user.username = username;
+      user.username = uInput.username;
       user.cookies = cookies;
       return addNewUser(user);
     })
@@ -567,7 +565,7 @@ let getAuthenticationStep = cheerioForm => {
   }
 
   return step;
-}
+};
 
 let loginPrompt = (nextStep) => {
   nextStep = nextStep || 'ENTER_USERNAME';
@@ -650,7 +648,7 @@ let reauthenticate = (username, password) => {
     .then(getRequestContextKey)
     .then(() => {
       return submitUsername(username)
-      .then(setAuthenticationKey);
+        .then(setAuthenticationKey);
     })
     .then(() => {
       return submitPassword(password);
@@ -667,6 +665,6 @@ let reauthenticate = (username, password) => {
         'X-CSRF-TOKEN': csrfToken
       };
     });
-}
+};
 
 module.exports.reauthenticate = reauthenticate;

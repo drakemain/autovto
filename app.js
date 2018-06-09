@@ -18,21 +18,21 @@ const checkInterval = {
 };
 
 let parseCLIParams = () => {
-  for (i = 0; i < process.argv.length; i += 2) {
+  for (let i = 0; i < process.argv.length; i += 2) {
     let param = process.argv[i];
     let value = process.argv[i + 1];
     switch(param) {
-      case 'mininterval':
+    case 'mininterval':
       if (!isNaN(value)) {checkInterval.min = Number(value);}
       else {console.log('\x1b[31m', `\nInvalid ${param} (${value})! Using default: ${checkInterval.min}`, '\x1b[0m');}
       break;
 
-      case 'randinterval':
+    case 'randinterval':
       if (!isNaN(value)) {checkInterval.rand = Number(value);}
       else {console.log('\x1b[31m', `\nInvalid ${param} (${value})! Using default: ${checkInterval.rand}`, '\x1b[0m');}
       break;
 
-      case 'duration':
+    case 'duration':
       if (!isNaN(value)) {timeToRun = Number(value);}
       else {console.log('\x1b[31m', `\nInvalid ${param} (${value})! Using default: ${timeToRun}`, '\x1b[0m');}
       break;
@@ -85,37 +85,37 @@ let run = () => {
       console.log(`Seconds since start: ${Math.round(runTime)}.`);
 
       return fetchOpportunities()
-      .then(findActiveOpportunity)
-      .then(claimOpportunity)
-      .then(() => {
-        res();
-      })
-      .catch(err => {
-        console.log(err.message);
-        console.log('\n\x1b[1m', stats.getStatsString(), '\x1b[0m', '\n');
-
-        if (checkRuntimeExceeded(runTime)) {
+        .then(findActiveOpportunity)
+        .then(claimOpportunity)
+        .then(() => {
           res();
-          return;
-        }
-        
-        if (err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-          console.log(`Connection Failure! Trying again in ${Math.floor(interval / 1000)}s.`);
-          console.log();
-          setTimeout(loop, interval);
-        } else if (err.code === 'ECONNRESET') {
-          // This is untested and can therefore potentially not actually work.
-          ++stats.ECONNRESET;
-          console.log('Connection Reset! Trying again in 1 minute.');
-          setTimeout(loop, 60000);
-        } else if (err.code === 'NOVTO' || err.code === 'VTOCLAIM') {
-          console.log(`Trying again in ${Math.floor(interval / 1000)}s.`);
-          setTimeout(loop, interval);
-        } else {
-          console.log('Authentication expired.');
-          return reauthenticate(user, pw).then(loadAuthData).then(loop);
-        }
-      });
+        })
+        .catch(err => {
+          console.log(err.message);
+          console.log('\n\x1b[1m', stats.getStatsString(), '\x1b[0m', '\n');
+
+          if (checkRuntimeExceeded(runTime)) {
+            res();
+            return;
+          }
+          
+          if (err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+            console.log(`Connection Failure! Trying again in ${Math.floor(interval / 1000)}s.`);
+            console.log();
+            setTimeout(loop, interval);
+          } else if (err.code === 'ECONNRESET') {
+            // This is untested and can therefore potentially not actually work.
+            ++stats.ECONNRESET;
+            console.log('Connection Reset! Trying again in 1 minute.');
+            setTimeout(loop, 60000);
+          } else if (err.code === 'NOVTO' || err.code === 'VTOCLAIM') {
+            console.log(`Trying again in ${Math.floor(interval / 1000)}s.`);
+            setTimeout(loop, interval);
+          } else {
+            console.log('Authentication expired.');
+            return reauthenticate(user, pw).then(loadAuthData).then(loop);
+          }
+        });
     })();
   });
 };
@@ -160,7 +160,7 @@ let fetchOpportunities = () => {
       console.log('Could not GET');
       rej(err);
     });
-  })
+  });
 };
 
 let findActiveOpportunity = (opportunities) => {
