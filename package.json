@@ -1,6 +1,6 @@
 {
   "name": "autovto",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Automatically accept VTO from Amazon Hub.",
   "main": "app.js",
   "dependencies": {

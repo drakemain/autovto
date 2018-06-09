@@ -4,6 +4,8 @@ const buildCookieString = require('./authenticate').buildCookieString;
 const https = require('https');
 const queryStringify = require('querystring').stringify;
 
+let user;
+let pw;
 let csrfToken;
 let cookieString;
 let cookies;
@@ -36,6 +38,8 @@ let parseCLIParams = () => {
       break;
     }
   }
+
+  console.log(`Minimum interval: (${typeof(checkInterval.min)})${checkInterval.min}s | Random modifier: (${typeof(checkInterval.rand)})${checkInterval.rand}s | Run duration: (${typeof(timeToRun)})${timeToRun}s`);
 };
 
 let stats = {
@@ -58,28 +62,19 @@ let main = () => {
   parseCLIParams();
 
   login().then(authHeaders => {
-    ++stats.authRefresh;
-    cookies = authHeaders.cookies;
-    cookieString = buildCookieString(authHeaders.cookies);
-    csrfToken = authHeaders['X-CSRF-TOKEN'];
+    loadAuthData(authHeaders);
     
-    return VTOWait();
+    return run();
     
   }).then(() => {
-    console.log('Final stats:\n' + stats.getStatsString());
+    console.log('Final stats:\n', '\x1b[1m', stats.getStatsString(), '\x1b[0m');
   }).catch(err => {
+    console.log('Unhandled error!');
     console.error(err);
-    main();
   });
 };
 
 let fetchOpportunities = () => {
-  const currentTime = new Date();
-  let timeSinceStart = currentTime - startTime;
-  timeSinceStart /= 1000;
-
-  console.log(`Seconds since start: ${Math.round(timeSinceStart)}.`);
-
   return new Promise((res, rej) => {
     console.log('Requesting VTO Opportunities.');
 
@@ -122,8 +117,10 @@ let fetchOpportunities = () => {
   })
 };
 
-let checkOpportunities = (opportunities) => {
+let findActiveOpportunity = (opportunities) => {
   console.log('Examining opportunities..');
+  let activeOpportunity = null;
+
   if (!opportunities) { return null; }
 
   let vtoArr = opportunities.vtoOpportunities;
@@ -135,80 +132,93 @@ let checkOpportunities = (opportunities) => {
       
       if (vtoArr[i].active) {
         console.log(opportunityLog, '\x1b[32m', '✓', '\x1b[0m');
-        return vtoArr[i];
+        activeOpportunity = vtoArr[i];
+        break;
       } else {
         console.log(opportunityLog,'\x1b[31m', '✘', '\x1b[0m');
       }
     }
   }
 
-  return null;
+  return activeOpportunity;
 };
 
-let VTOWait = () => {
+let checkRuntimeExceeded = (runTime) => {
+  if (timeToRun !== 0) {
+    if (runTime > timeToRun) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+let loadAuthData = (authData) => {
+  ++stats.authRefresh;
+  cookies = authData.cookies;
+  cookieString = buildCookieString(authData.cookies);
+  csrfToken = authData['X-CSRF-TOKEN'];
+  user = authData.user;
+  pw = authData.pw;
+};
+
+let run = () => {
   return new Promise((res) => {
     (function loop() {
+      let now = new Date();
+      let runTime = Math.round((now - startTime) / 1000);
       const interval = (checkInterval.min + (Math.random() * checkInterval.rand)) * 1000;
-      console.log("\x1b[40m", new Date().toLocaleTimeString(), "\x1b[0m");
-        
+
+      console.log('\n\x1b[40m', new Date().toLocaleTimeString(), '\x1b[0m');
+      console.log(`Seconds since start: ${Math.round(runTime)}.`);
+
       return fetchOpportunities()
-      .then(checkOpportunities)
-      .then(activeVTO => {
-        if (activeVTO) {
-          console.log('Found a VTO opportunity!');
-          res(activeVTO);
-        } else {
-          console.log('No VTO opportunities apply to you. =(\n');
-          let shouldLoop = true;
+      .then(findActiveOpportunity)
+      .then(claimOpportunity)
+      .then(() => {
+        res();
+      })
+      .catch(err => {
+        console.log(err.message);
+        console.log('\n\x1b[1m', stats.getStatsString(), '\x1b[0m', '\n');
 
-          if (timeToRun !== 0) {
-            let now = new Date();
-            let runTime = Math.round((now - startTime) / 1000);
-            console.log(`Looping for ${timeToRun - runTime}s.`);
-
-            if (runTime > timeToRun) {
-              shouldLoop = false;
-            }
-          } else {
-            console.log('Looping continuously.');
-          }
-
-          if (shouldLoop) {
-            setTimeout(loop, interval);
-          } else {
-            console.log('Exceeded runtime. Terminating loop.');
-            res(null);
-          }
+        if (checkRuntimeExceeded(runTime)) {
+          res();
+          return;
         }
-
-        console.log('\x1b[1m', stats.getStatsString(), '\x1b[0m');
-        console.log(`Waiting ${interval}ms until next check.\n`);
-      }).catch(err => {
-        console.log('\n' + err);
-        if (err.code === "ENOTFOUND" || err.code === "ETIMEDOUT") {
-          console.log('Connection Failure!\nTrying again in ' + interval + 'ms');
+        
+        if (err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+          console.log(`Connection Failure! Trying again in ${interval}s.`);
+          console.log();
           setTimeout(loop, interval);
-        } else if (err.code === "ECONNRESET") {
+        } else if (err.code === 'ECONNRESET') {
+          // This is untested and can therefore potentially not actually work.
           ++stats.ECONNRESET;
-          console.log('Connection Reset!\nWaiting 1 minute.');
-          setTimeout(main, 60000);
+          console.log('Connection Reset! Trying again in 1 minute.');
+          setTimeout(loop, 60000);
+        } else if (err.code === 'NOVTO' || err.code === 'VTOCLAIM') {
+          console.log(`Trying again in ${interval}s.`);
+          setTimeout(loop, interval);
         } else {
           console.log('Authentication expired. Attempting to reauthenticate.');
-          return reauthenticate();
+          // TODO: TEST THIS
+          return reauthenticate(user, pw).then(loadAuthData).then(loop);
         }
       });
     })();
-  })
-  .then(claimOpportunity);
+  });
 };
 
 let claimOpportunity = (opportunity) => {
-  if (opportunity === null) { return; }
+  if (opportunity === null) {
+    let err = new Error('No opportunity to claim.');
+    err.code = 'NOVTO';
+    return Promise.reject(err);
+  }
 
   console.log('Attempting to claim opportunity.');
   let startTime = new Date(opportunity.start_time).getTime() / 1000;
   
-
   let data = queryStringify({
     opportunity_id: opportunity.opportunity_id,
     start_time: startTime,
@@ -246,6 +256,7 @@ let claimOpportunity = (opportunity) => {
       });
 
       response.on('error', err => {
+        console.log('An error occured while fetching VTO POST claim response.');
         rej(err);
       });
     });
@@ -255,8 +266,9 @@ let claimOpportunity = (opportunity) => {
   }).then(response => {
     if (response['errors']) {
       ++stats.missedVTO;
-      console.log(`Failed to claim VTO: ${response['errors']}\n`);
-      return VTOWait();
+      let err = new Error(`Failed to claim VTO: ${response['errors']}`);
+      err.code = 'VTOCLAIM';
+      throw err;
     } else {
       ++stats.acceptedVto;
       console.log('Success!');
