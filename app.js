@@ -11,7 +11,8 @@ let cookieString;
 let cookies;
 const startTime = new Date();
 let timeToRun = 0;
-const employeeID = '101146319';
+let maxAccept = 0;
+let employeeID = '';
 const checkInterval = {
   min: 10,
   rand: 20
@@ -36,10 +37,15 @@ let parseCLIParams = () => {
       if (!isNaN(value)) {timeToRun = Number(value);}
       else {console.log('\x1b[31m', `\nInvalid ${param} (${value})! Using default: ${timeToRun}`, '\x1b[0m');}
       break;
+
+    case 'maxaccept':
+      if (!isNaN(value)) {maxAccept = Number(value);}
+      else {console.log('\x1b[31m', `\nInvalid ${param} (${value})! Using default: ${maxAccept}`, '\x1b[0m');}
+      break;
     }
   }
 
-  console.log(`Minimum interval: ${checkInterval.min}s | Random modifier: ${checkInterval.rand}s | Run duration: ${timeToRun}s`);
+  console.log(`Minimum interval: ${checkInterval.min}s | Random modifier: ${checkInterval.rand}s | Run duration: ${timeToRun}s | Max Instances: ${maxAccept}`);
 };
 
 let stats = {
@@ -79,16 +85,21 @@ let run = () => {
     (function loop() {
       let now = new Date();
       let runTime = Math.round((now - startTime) / 1000);
+      let acceptedInstances = 0;
       const interval = (checkInterval.min + (Math.random() * checkInterval.rand)) * 1000;
 
       console.log('\n\x1b[40m', new Date().toLocaleTimeString(), '\x1b[0m');
       console.log(`Seconds since start: ${Math.round(runTime)}.`);
 
-      return fetchOpportunities()
+      fetchOpportunities()
         .then(findActiveOpportunity)
         .then(claimOpportunity)
         .then(() => {
-          res();
+          if ((maxAccept > 0) && (++acceptedInstances >= maxAccept)) {
+            res();
+          } else {
+            loop();
+          }
         })
         .catch(err => {
           console.log(err.message);
@@ -273,6 +284,7 @@ let loadAuthData = (authData) => {
   csrfToken = authData['X-CSRF-TOKEN'];
   user = authData.user;
   pw = authData.pw;
+  employeeID = authData.employeeID;
 };
 
 let setCookie = (cookieArr) => {

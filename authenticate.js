@@ -8,7 +8,8 @@ const fs = require('fs');
 let uInput = {
   username: '',
   pw: '',
-  obfuscatedPhoneNumber: ''
+  obfuscatedPhoneNumber: '',
+  employeeID: ''
 };
 
 let RequestContextKey = '';
@@ -333,6 +334,15 @@ let inputPassword = () => {
   });  
 };
 
+let employeeIDPrompt = () => {
+  if (uInput.employeeID == '') {
+    return prompt('\nEnter Employee ID: ')
+      .then(employeeID => {
+        uInput.employeeID = employeeID;
+      });
+  }
+};
+
 let submitPassword = (password) => {
   const data = queryString.stringify({
     login: uInput.username,
@@ -497,6 +507,7 @@ let loadRegisteredUserData = (username) => {
       cookies['amzn-idp-auth-token'] = userData['amzn-idp-auth-token'];
       cookies['amzn-idp-td-key'] = userData['amzn-idp-td-key'];
       cookies['amzn-idp-td-token'] = userData['amzn-idp-td-token'];
+      uInput.employeeID = userData.employeeID;
       return true;
     } else {
       console.log('\x1b[31m', 'No existing tokens.', '\x1b[0m');
@@ -517,6 +528,7 @@ let addNewUser = (newUser) => {
 
   return getRegisteredUserTokens().then(users => {
     users[newUser.username] = idp;
+    users[newUser.username].employeeID = uInput.employeeID;
     let stringifiedUsers = JSON.stringify(users);
     return stringifiedUsers;
   }).then(updatedUsersString => {
@@ -616,6 +628,7 @@ let CLI = () => {
   return getSAMLRedirect()
     .then(getRequestContextKey)
     .then(loginPrompt)
+    .then(employeeIDPrompt)
     .then(getEsspSession)
     .then(getCSRFToken)
     .then(() => {
@@ -631,7 +644,8 @@ let CLI = () => {
         user: uInput.username,
         pw: uInput.pw,
         cookies: cookies,
-        'X-CSRF-TOKEN': csrfToken
+        'X-CSRF-TOKEN': csrfToken,
+        employeeID: uInput.employeeID
       };
     });
 };
@@ -661,6 +675,7 @@ let reauthenticate = (username, password) => {
       return {
         user: uInput.username,
         pw: uInput.pw,
+        employeeID: uInput.employeeID,
         cookies: cookies,
         'X-CSRF-TOKEN': csrfToken
       };
