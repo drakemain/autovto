@@ -1,0 +1,9 @@
+# autovto
+
+When I worked at Amazon Fullfillment, we would occasionally be offered Voluntary Time Off (VTO). VTO would be offered when there was less projected work than labor for specific departments. The number of slots available slots varied and was offered on a first come, first serve basis. This was a private repo for a long time because it is sort of a "grey" project, but I am still pretty proud of myself for pulling it off. This was sort of a milestone project for me. I - someone with no formal education - managed to reverse engineer Amazon's employee portal to achieve a goal.
+
+I did this because I really didn't like my job. It was 10 hours a day of extreme repetition of a very simple task. I took the opportunity for VTO whenever I could, but I was often not fast enough to get a slot. I decided I would automate the process.
+
+There was of course no public API available for the Amazon employee portal (where VTO could be claimed), so getting this to work involved writing an app that could talk to the amazon employee portal (where vto could be claimed). I had to analyze the exchange between my browser and the server to authenticate, request a list of available vto, and requesting vto when a valid slot for my shift and department was available. 
+
+This was a fairly difficult task, but in the end I managed to get it to work. This application would simply send out requests for the VTO list (the interval was parameterized so that I could easily set a min/max/random factor (randomness was to try to reduce any sort of bot detection)), automatically reauthenticate when the token expired, and immediately request an available VTO slot. I could claim VTO before the notifications that VTO was available even went out! This was built to mimic a user (me) logging into the portal with a browser and requesting VTO, and so there are a lot of very specific steps involved. This probably doesn't work anymore if the portal has changed at all.
